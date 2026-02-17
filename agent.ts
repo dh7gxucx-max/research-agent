@@ -24,6 +24,7 @@ import type {
   ResearchResult,
   ResearchSession,
   CandidateRecord,
+  ProgressCallback,
 } from "./types.js";
 
 let claude: Anthropic;
@@ -170,7 +171,8 @@ const sessionQueries: string[] = [];
 
 async function executeTool(
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  onProgress?: ProgressCallback
 ): Promise<string> {
   const t0 = Date.now();
 
@@ -178,6 +180,7 @@ async function executeTool(
     case "google_search": {
       const query = input.query as string;
       sessionQueries.push(query);
+      onProgress?.(`🔍 Ищу: "${query}"`);
       console.log(`  🔍 [Serper] "${query}"`);
       const result = await serperSearch(query);
       console.log(`  ✅ done in ${Date.now() - t0}ms`);
@@ -187,6 +190,7 @@ async function executeTool(
     case "discover": {
       const query = input.query as string;
       sessionQueries.push(`[discover] ${query}`);
+      onProgress?.(`🌐 Исследую: "${query}"`);
       console.log(`  🌐 [Gemini] Discovering: "${query}"`);
       const result = await geminiGroundedSearch(query, input.context as string);
       console.log(`  ✅ done in ${Date.now() - t0}ms`);
@@ -194,6 +198,8 @@ async function executeTool(
     }
 
     case "extract_page": {
+      const domain = new URL(input.url as string).hostname.replace("www.", "");
+      onProgress?.(`📄 Читаю: ${domain}`);
       console.log(`  📄 [Gemini] Extracting from: ${input.url}`);
       const result = await extractFromUrl(
         input.url as string,
@@ -204,6 +210,8 @@ async function executeTool(
     }
 
     case "read_page": {
+      const domain = new URL(input.url as string).hostname.replace("www.", "");
+      onProgress?.(`📖 Читаю: ${domain}`);
       console.log(`  📖 [Direct] Reading: ${input.url}`);
       const result = await getPageText(input.url as string);
       console.log(`  ✅ ${(result.length / 1000).toFixed(0)}k chars, ${Date.now() - t0}ms`);
@@ -211,6 +219,8 @@ async function executeTool(
     }
 
     case "evaluate": {
+      const candidateName = input.name as string;
+      onProgress?.(`📊 Оцениваю: ${candidateName}`);
       return handleEvaluation(input);
     }
 
@@ -274,7 +284,8 @@ function handleEvaluation(input: Record<string, unknown>): string {
 
 export async function runResearchAgent(
   task: string,
-  criteria: ResearchCriteria
+  criteria: ResearchCriteria,
+  onProgress?: ProgressCallback
 ): Promise<ResearchResult> {
   // Reset session state
   sessionCandidates.length = 0;
@@ -306,8 +317,11 @@ export async function runResearchAgent(
 
     // --- Compress history periodically ---
     if (iterations > 1 && (iterations - 1) % COMPRESS_EVERY === 0) {
+      onProgress?.(`🗜️ Сжимаю контекст...`);
       messages = await compressHistory(messages);
     }
+
+    onProgress?.(`🔄 Итерация ${iterations}/${MAX_ITERATIONS}... Думаю...`);
 
     const inputTokensEst = estimateTokens(messages);
     console.log(`  📏 [iter ${iterations}] ~${inputTokensEst} input tokens`);
@@ -326,6 +340,7 @@ export async function runResearchAgent(
       } catch (err: any) {
         if (err?.status === 429 && attempt < 4) {
           const wait = Math.min(15 * (attempt + 1), 60);
+          onProgress?.(`⏳ Пауза ${wait}с (лимит API)...`);
           console.log(`  ⏳ Rate limited, waiting ${wait}s (attempt ${attempt + 1}/5)...`);
           await new Promise(r => setTimeout(r, wait * 1000));
           continue;
@@ -348,6 +363,7 @@ export async function runResearchAgent(
 
     // Done
     if (response.stop_reason === "end_turn") {
+      onProgress?.(`✅ Формирую отчёт...`);
       const finalText = response.content
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text)
@@ -406,7 +422,8 @@ export async function runResearchAgent(
         try {
           const result = await executeTool(
             toolCall.name,
-            toolCall.input as Record<string, unknown>
+            toolCall.input as Record<string, unknown>,
+            onProgress
           );
           // Cap tool results to control context size (saves ~60% on costs)
           const MAX_RESULT = 4000;

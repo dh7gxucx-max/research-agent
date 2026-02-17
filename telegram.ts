@@ -134,7 +134,7 @@ async function handleResearch(chatId: number, userText: string, editMsgId?: numb
       criteriaMsg += `\n🧠 _В памяти ${stats.services} известных сервисов из ${stats.sessions} прошлых исследований_`;
     }
 
-    criteriaMsg += `\n\n🔍 Ищу... _(может занять 2-7 мин)_`;
+    criteriaMsg += `\n\n🔍 Начинаю поиск...`;
 
     await bot.editMessageText(criteriaMsg, {
       chat_id: chatId,
@@ -142,8 +142,32 @@ async function handleResearch(chatId: number, userText: string, editMsgId?: numb
       parse_mode: "Markdown",
     });
 
-    // Run agent
-    const result = await runResearchAgent(parsed.task, parsed.criteria);
+    // --- Live status updates ---
+    let statusMsgId = 0;
+    let lastStatusUpdate = 0;
+    const STATUS_DEBOUNCE = 2000;
+
+    const onProgress = async (status: string) => {
+      const now = Date.now();
+      if (now - lastStatusUpdate < STATUS_DEBOUNCE) return;
+      lastStatusUpdate = now;
+
+      try {
+        if (statusMsgId) {
+          await bot.deleteMessage(chatId, statusMsgId).catch(() => {});
+        }
+        const msg = await bot.sendMessage(chatId, `⏳ ${status}`);
+        statusMsgId = msg.message_id;
+      } catch {}
+    };
+
+    // Run agent with progress callback
+    const result = await runResearchAgent(parsed.task, parsed.criteria, onProgress);
+
+    // Delete last status message
+    if (statusMsgId) {
+      await bot.deleteMessage(chatId, statusMsgId).catch(() => {});
+    }
 
     if (!activeSessions.has(chatId)) return;
 

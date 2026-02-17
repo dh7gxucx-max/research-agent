@@ -30,6 +30,10 @@ export interface ResearchResult {
   };
 }
 
+// --- Progress callback ---
+
+export type ProgressCallback = (status: string) => void;
+
 // --- Memory ---
 
 export interface CandidateRecord {
