@@ -312,7 +312,7 @@ export async function runResearchAgent(
     const inputTokensEst = estimateTokens(messages);
     console.log(`  📏 [iter ${iterations}] ~${inputTokensEst} input tokens`);
 
-    let response: Anthropic.Message;
+    let response!: Anthropic.Message;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         response = await getClaude().messages.create({
