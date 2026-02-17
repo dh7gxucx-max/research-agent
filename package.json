@@ -3,9 +3,10 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
+    "start": "tsx telegram.ts",
     "build": "tsc",
-    "dev": "tsx src/main.ts",
-    "bot": "tsx src/telegram.ts"
+    "dev": "tsx main.ts",
+    "bot": "tsx telegram.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
